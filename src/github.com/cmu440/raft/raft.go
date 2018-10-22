@@ -15,7 +15,7 @@ package raft
 // expose.
 //
 // rf = Make(...)
-//   Create a new Raft server.
+//   Create a new Raft peer.
 //
 // rf.Start(command interface{}) (index, term, isleader)
 //   Start agreement on a new log entry
@@ -27,7 +27,7 @@ package raft
 // ApplyMsg
 //   Each time a new entry is committed to the log, each Raft peer
 //   should send an ApplyMsg to the service (e.g. tester) on the
-//   same server, via the applyCh channel passed to Make()
+//   same peer, via the applyCh channel passed to Make()
 //
 
 import "sync"
@@ -39,7 +39,7 @@ import "github.com/cmu440/rpc"
 //
 // As each Raft peer becomes aware that successive log entries are
 // committed, the peer should send an ApplyMsg to the service (or
-// tester) on the same server, via the applyCh passed to Make()
+// tester) on the same peer, via the applyCh passed to Make()
 //
 type ApplyMsg struct {
 	Index   int
@@ -122,9 +122,9 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 // sendRequestVote
 // ===============
 //
-// Example code to send a RequestVote RPC to a server
+// Example code to send a RequestVote RPC to a peer
 //
-// server int -- index of the target server in
+// peer int -- index of the target peer in
 // rf.peers[]
 //
 // args *RequestVoteArgs -- RPC arguments in args
@@ -135,7 +135,7 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 // the same as the types of the arguments declared in the
 // handler function (including whether they are pointers)
 //
-// The rpc package simulates a lossy network, in which servers
+// The rpc package simulates a lossy network, in which peers
 // may be unreachable, and in which requests and replies may be lost
 //
 // Call() sends a request and waits for a reply
@@ -145,11 +145,11 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 //
 // Thus Call() may not return for a while
 //
-// A false return can be caused by a dead server, a live server that
+// A false return can be caused by a dead peer, a live peer that
 // can't be reached, a lost request, or a lost reply
 //
 // Call() is guaranteed to return (perhaps after a delay)
-// *except* if the handler function on the server side does not return
+// *except* if the handler function on the peer side does not return
 //
 // Thus there
 // is no need to implement your own timeouts around Call()
@@ -162,8 +162,8 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 // that the caller passes the address of the reply struct with "&",
 // not the struct itself
 //
-func (rf *Raft) sendRequestVote(server int, args *RequestVoteArgs, reply *RequestVoteReply) bool {
-	ok := rf.peers[server].Call("Raft.RequestVote", args, reply)
+func (rf *Raft) sendRequestVote(peer int, args *RequestVoteArgs, reply *RequestVoteReply) bool {
+	ok := rf.peers[peer].Call("Raft.RequestVote", args, reply)
 	return ok
 }
 
@@ -171,10 +171,10 @@ func (rf *Raft) sendRequestVote(server int, args *RequestVoteArgs, reply *Reques
 // Start
 // =====
 //
-// The service using Raft (e.g. a k/v server) wants to start
+// The service using Raft (e.g. a k/v peer) wants to start
 // agreement on the next command to be appended to Raft's log
 //
-// If this server is not the leader, return false
+// If this peer is not the leader, return false
 //
 // Otherwise start the agreement and return immediately
 //
@@ -186,7 +186,7 @@ func (rf *Raft) sendRequestVote(server int, args *RequestVoteArgs, reply *Reques
 //
 // The second return value is the current term
 //
-// The third return value is true if this server believes it is
+// The third return value is true if this peer believes it is
 // the leader
 //
 func (rf *Raft) Start(command interface{}) (int, int, bool) {
@@ -218,14 +218,14 @@ func (rf *Raft) Kill() {
 // Make
 // ====
 //
-// The service or tester wants to create a Raft server
+// The service or tester wants to create a Raft peer
 //
-// The port numbers of all the Raft servers (including this one)
+// The port numbers of all the Raft peers (including this one)
 // are in peers[]
 //
-// This server's port is peers[me]
+// This peer's port is peers[me]
 //
-// All the servers' peers[] arrays have the same order
+// All the peers' peers[] arrays have the same order
 //
 // applyCh
 // =======
