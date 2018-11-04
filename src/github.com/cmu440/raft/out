@@ -1,0 +1,13 @@
+==================== 3 SERVERS ====================
+Make calledMake calledMake calledTest (2A): Initial election
+Checking current leader
+--- FAIL: TestInitialElection2A (5.00s)
+	raft_test.go:530: expected one leader, got none
+==================== 3 SERVERS ====================
+Make calledMake calledMake calledTest (2A): Re-election
+Basic 1 leader
+--- FAIL: TestReElection2A (5.00s)
+	raft_test.go:530: expected one leader, got none
+FAIL
+exit status 1
+FAIL	github.com/cmu440/raft	10.011s
