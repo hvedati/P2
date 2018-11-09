@@ -32,7 +32,7 @@ package raft
 
 import "sync"
 import "github.com/cmu440/rpc"
-import "fmt"
+//import "fmt"
 import "time"
 import "math/rand"
 
@@ -85,7 +85,8 @@ type Raft struct {
 // believes it is the leader
 //
 func (rf *Raft) GetState() (int, int, bool) {
-	//rf.mux.Lock()
+	rf.mux.Lock()
+	defer rf.mux.Unlock()
 	//need to use lock here??
 	var me int
 	var term int
@@ -159,45 +160,37 @@ type RequestVoteReply struct {
 func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 	// Your code here (2A, 2B)
 
-	//need to lock here?
-	//
-	//fmt.Printf("request vote called\n")
-	//fmt.Printf("%d %d\n", args.Term, rf.currentTerm)
+	//fmt.Printf("request vote called for CandidateId %d\n", args.CandidateId)
+	//fmt.Printf("current term is %d args term is %d\n", rf.currentTerm, args.Term)
+	//fmt.Printf("rf.votedFor is %d\n", rf.votedFor)
 	rf.mux.Lock()
+	defer rf.mux.Unlock()
 	if (args.Term < rf.currentTerm){
-		//fmt.Printf("going into this case 1\n")
 		reply.VoteGranted = false
 		reply.Term = rf.currentTerm
 
 	} else if (rf.currentTerm < args.Term){
-		//fmt.Printf("going into this case 2\n")
 		reply.Term = rf.currentTerm
 		rf.currentState = 1
 		rf.currentTerm = args.Term
-		rf.votedFor = -1
-		
+		rf.votedFor = -1		
 		go rf.resetTimeout()
-		//reset election timer??
 	}
-
-	//fmt.Printf("the raft value is %d voted for is %d and cand id is %d\n", rf.me, rf.votedFor, args.CandidateId)
 	if (rf.votedFor == -1){
-		//fmt.Printf("going into this case 3\n")
 		reply.VoteGranted = true
 		rf.votedFor = args.CandidateId
 		reply.Term = rf.currentTerm
-	} else if (rf.votedFor  == args.CandidateId){
-		//fmt.Printf("going into this case 4\n")
+	} 
+	/*else if (rf.votedFor  == args.CandidateId){
 		reply.VoteGranted = true
 		rf.votedFor = args.CandidateId
 		reply.Term = rf.currentTerm
-	}
-
+	}*/
+	/*
 	if(rf.currentState == 1 && reply.VoteGranted == true){
-		//fmt.Printf("going into this case 2\n")
 		go rf.resetTimeout()
-	}
-	rf.mux.Unlock()
+	}*/
+	//rf.mux.Unlock()
 	return
 }
 
@@ -205,22 +198,22 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply){
 	//need to lock here?
 	rf.mux.Lock()
-	fmt.Printf("AppendEntries is called\n")
+	//fmt.Printf("AppendEntries is called\n")
 	if(args.Term < rf.currentTerm){
 		reply.Term = rf.currentTerm
-		reply.Success = false
+		//reply.Success = false
 		
 	}else if(args.Term == rf.currentTerm){
 		//if follower then resetelection 
 			//then candidate
 		//if candidate then follower
 		if (rf.currentState == 1){
-			fmt.Printf("follower reseting the timeout")
+			//fmt.Printf("follower reseting the timeout")
 			go rf.resetTimeout()
 
 		}
 		if (rf.currentState == 2){
-			fmt.Printf("candidate reseting the timeout")
+			//fmt.Printf("candidate reseting the timeout")
 			reply.Term = rf.currentTerm
 			rf.currentState = 1
 			rf.currentTerm = args.Term
@@ -369,64 +362,66 @@ func (rf *Raft) sendHeartBeat (i int, a *AppendEntriesArgs, r *AppendEntriesRepl
 		//lock here?
 			rf.mux.Lock()
 		if (r.Term > rf.currentTerm){
-			fmt.Printf("In this case")
+			//fmt.Printf("In this case")
 			rf.currentTerm = r.Term
 			rf.currentState = 1
 			rf.votedFor = -1
-			rf.mux.Unlock()
+			//rf.mux.Unlock()
 		}
 		rf.mux.Unlock()
+	}else{
+		rf.sendHeartBeat(i, a, r)
 	}
 
 }
 
-func (rf *Raft)sendVR(i int, a *RequestVoteArgs, r* RequestVoteReply, c chan bool){
-	//fmt.Printf("Send vote requeset to id number %d from raft number %d\n", i, rf.me)
-	result := rf.sendRequestVote(i, a, r)
-	//fmt.Printf("the result is %t\n",result)
-	if (result == true){
-		//fmt.Printf("voteGranted is %t\n", r.VoteGranted)
-		//lock here?
-		if (r.VoteGranted == true){
-			//fmt.Printf("sent true on channel to raft %d from id %d\n",rf.me, i )
-			c<- true
-
-		}else{
-			if (r.Term > rf.currentTerm){
-				rf.mux.Lock()
-				rf.currentTerm = r.Term
-				rf.currentState = 1
-				rf.votedFor = -1
-				rf.mux.Unlock()
-			}
-			c <- false
-		}
-	}
-
-}
 func (rf *Raft) heartBeat(){
+	rf.mux.Lock()
+	c := rf.currentState
+	rf.mux.Unlock()
     for{
-    	if(rf.currentState == 0){
+    	if(c == 0){
     		for i,_ := range(rf.peers){
 				if (i != rf.me){
-					heartBeatArgs := &AppendEntriesArgs{Term:rf.currentTerm,
+					heartBeatArgs := &AppendEntriesArgs{Term:c,
 														LeaderId:rf.me,
 														}
 					heartBeatReply := &AppendEntriesReply{}
-					fmt.Printf("sending heartbeat from %d to %d\n", rf.me, i)
+					//fmt.Printf("sending heartbeat from %d to %d\n", rf.me, i)
 					go rf.sendHeartBeat(i, heartBeatArgs, heartBeatReply)
 				//need to also check the term? 				
 				}
 			}					
 		} else{
 			return
-		}
-		
+		}		
 		time.Sleep(200 * time.Millisecond)
 	}
 }
 
+func (rf *Raft)sendVR(i int, a *RequestVoteArgs, r* RequestVoteReply, c chan bool){	
+	result := rf.sendRequestVote(i, a, r)	
+	//fmt.Printf("the result from vote request sent to %d is %t\n", i, result)
+	if (result){
+		if (r.VoteGranted){
+			//fmt.Printf("sent true on channel to raft %d from id %d\n",rf.me, i )
+			c<- true
 
+		}else{
+			rf.mux.Lock()
+			if (r.Term > rf.currentTerm){
+				rf.mux.Lock()
+				rf.currentTerm = r.Term
+				rf.currentState = 1
+				rf.votedFor = -1				
+			}
+			rf.mux.Unlock()
+			c <- false
+		}
+	} else{
+		rf.sendVR(i,a,r,c)
+	}
+}
 
 
 func (rf *Raft) analyzeVotes(c chan bool, t int){
@@ -434,18 +429,11 @@ func (rf *Raft) analyzeVotes(c chan bool, t int){
 	count := 0
 	for elem := range(c){
 		rf.mux.Lock()
+		defer rf.mux.Unlock()
 		// check if the term is the same by locking?
 		if (elem == true){
 			//fmt.Printf("inside the elem is true case for the id %d\n", rf.me)
 			count += 1 
-		}
-		if (t != rf.currentTerm){
-			rf.mux.Unlock()
-			return
-		}
-		if(rf.currentState != 2){
-			rf.mux.Unlock()
-			return
 		}
 		if (count + 1 > totalPeers/2){
 			//fmt.Printf("Became a leader %d\n", rf.me)
@@ -454,12 +442,11 @@ func (rf *Raft) analyzeVotes(c chan bool, t int){
 				//rf.votedFor = rf.me
 				go rf.heartBeat()
 			}
-			rf.mux.Unlock()
+			//rf.mux.Unlock()
 			return 
 			//start go routine that sends heatbeats //only do this if it is still in a valid state
 			// need to end this go routine at some point			
-		}
-		
+		}		
 	}
 	return
 }
@@ -467,16 +454,16 @@ func (rf *Raft) analyzeVotes(c chan bool, t int){
 
 func (rf *Raft) newElection(){
 	//fmt.Printf("New election started by %d\n", rf.me)
-	
+	rf.mux.Lock()
 	rf.currentTerm = rf.currentTerm +1
-
+	rf.mux.Unlock()
 	numPeers := len(rf.peers)
 	votes := make(chan bool, numPeers) // buffered channel? 
 	for i,_ := range(rf.peers){
 		if (i != rf.me){
 			//fmt.Printf("me is %d\n",rf.me)
 			//fmt.Printf("votedFor is %d\n", rf.votedFor)
-		
+			//fmt.Printf("send vote request to %d from %d\n", i, rf.me)
 			sendVoteArgs := &RequestVoteArgs{Term:rf.currentTerm,
 											 CandidateId:rf.me}
 			sendVoteReply := &RequestVoteReply{}
@@ -484,13 +471,15 @@ func (rf *Raft) newElection(){
 		}
 	}
 	t := rf.currentTerm
-	go rf.analyzeVotes(votes, t)	
+	go rf.analyzeVotes(votes, t)
+	return	
 }
 
 func (rf *Raft) resetTimeout(){
 	// should this be for select?
-	fmt.Printf("resetTimeout is called %d %d\n", rf.me, rf.currentState )
-	l := rand.Intn(750) + 400
+	//fmt.Printf("resetTimeout is called %d %d\n", rf.me, rf.currentState )
+	rand.Seed(int64(rf.me))
+	l := rand.Intn(750,) + 400
 	timer := time.NewTimer(time.Duration(l) * time.Millisecond)
 	rf.mux.Lock()
 	t := rf.currentTerm
@@ -504,26 +493,18 @@ func (rf *Raft) resetTimeout(){
 	  				return
 	  			}
 	  			if (rf.currentState == 1){
-	  				fmt.Printf("Becomes a candidate and starts election %d\n", rf.me)
 					rf.currentState = 2
-					//fmt.Printf("the current votedFor is %d\n", rf.votedFor)
 					rf.votedFor = rf.me
-					rf.newElection()
-			//need to set the votedFor to candidate id? 
-			//count yourself 
+					go rf.newElection()
 				} else if (rf.currentState == 2){
-					fmt.Printf("Already a candidate and starts election %d\n", rf.me)
-					rf.newElection()
+					//fmt.Printf("Already a candidate and starts election %d\n", rf.me)
+					go rf.newElection()
 				}
 				rf.mux.Unlock()
-	  			//lock here and check that the term is the same 
-
-	    	// timeout
 		}
   		
 	}
-	//what to do here?
-
+	return
 }
 
 func Make(peers []*rpc.ClientEnd, me int, applyCh chan ApplyMsg) *Raft {
