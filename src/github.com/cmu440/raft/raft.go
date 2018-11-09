@@ -74,7 +74,7 @@ func (rf *Raft) GetState() (int, int, bool) {
 
 	var me int
 	var term int
-	var isleader bool
+	var isleader boos
 	// Your code here (2A)
 	return me, term, isleader
 }
