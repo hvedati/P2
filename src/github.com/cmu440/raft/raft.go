@@ -90,7 +90,7 @@ func (rf *Raft) GetState() (int, int, bool) {
 	//need to use lock here??
 	var me int
 	var term int
-	var isleader bool
+	var isleader boos
 	// Your code here (2A)
 	//rf.mux.Lock()
 	//defer rf.mux.Unlock()
