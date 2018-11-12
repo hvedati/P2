@@ -152,15 +152,15 @@ func TestFailAgree2B(t *testing.T) {
 	fmt.Printf("Checking agreement with one disconnected peer\n")
 	// agree despite two disconnected servers?
 	cfg.one(102, servers-1)
-	fmt.Printf("a\n")
+	fmt.Printf("A\n")
 	cfg.one(103, servers-1)
-	fmt.Printf("b\n")
+	fmt.Printf("B\n")
 	time.Sleep(RaftElectionTimeout)
 	fmt.Printf("lolol\n")
 	cfg.one(104, servers-1)
-	fmt.Printf("c\n")
+	fmt.Printf("C\n")
 	cfg.one(105, servers-1)
-	fmt.Printf("d\n")
+	fmt.Printf("D\n")
 
 	// re-connect
 	cfg.connect((leader + 1) % servers)
@@ -222,6 +222,7 @@ func TestFailNoAgree2B(t *testing.T) {
 	// among their own ranks, forgetting index 2.
 	// or perhaps
 	leader2 := cfg.checkOneLeader()
+	fmt.Printf("Leader 2 is %d\n", leader2)
 	index2, _, ok2 := cfg.rafts[leader2].Start(30)
 	if !ok2 {
 		t.Fatalf("Leader2 rejected Start()")
@@ -712,7 +713,9 @@ func (cfg *config) one(cmd int, expectedServers int) int {
 			// submitted our command; wait a while for agreement.
 			t1 := time.Now()
 			for time.Since(t1).Seconds() < 2 {
+
 				nd, cmd1 := cfg.nCommitted(index)
+				fmt.Printf("nd is %d\n", nd)
 				if nd > 0 && nd >= expectedServers {
 					// committed
 					if cmd2, ok := cmd1.(int); ok && cmd2 == cmd {

@@ -94,7 +94,8 @@ type Raft struct {
 //
 func (rf *Raft) GetState() (int, int, bool) {
 	rf.mux.Lock()
-	defer rf.mux.Unlock()
+	fmt.Printf("took lock in get state id is %d\n", rf.me)
+	//defer rf.mux.Unlock()
 	//need to use lock here??
 	var me int
 	var term int
@@ -109,7 +110,8 @@ func (rf *Raft) GetState() (int, int, bool) {
 	} else{
 		isleader = false
 	}
-	
+	fmt.Printf("released lock in get state id is %d\n", rf.me)
+	rf.mux.Unlock()
 	return me, term, isleader
 }
 
@@ -178,7 +180,8 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 	//fmt.Printf("current term is %d args term is %d\n", rf.currentTerm, args.Term)
 	//fmt.Printf("rf.votedFor is %d\n", rf.votedFor)
 	rf.mux.Lock()
-	defer rf.mux.Unlock()
+	fmt.Printf("took lock in request vote %d\n", rf.me)
+	//defer rf.mux.Unlock()
 	if (args.Term < rf.currentTerm){
 		reply.VoteGranted = false
 		reply.Term = rf.currentTerm
@@ -216,15 +219,17 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 	if(reply.VoteGranted == true){
 		go rf.resetTimeout()
 	}
-	//rf.mux.Unlock()
+	fmt.Printf("released lock in request vote %d\n", rf.me)
+	rf.mux.Unlock()
 	return
 }
 
 
 func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply){
 	rf.mux.Lock()
+	fmt.Printf("took look in Append Entries id is %d\n", rf.me)
 	//need to lock here?
-	defer rf.mux.Unlock()
+	//defer rf.mux.Unlock()
 	reply.Success = true
 	if(args.Term < rf.currentTerm){
 		reply.Term = rf.currentTerm
@@ -258,11 +263,13 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 	//
 	if (len(args.Entries) >0){
 		check := args.PrevLogIndex> 0 && len(rf.log)  >= args.PrevLogIndex
-		fmt.Printf("The id is %d, the prev log index is %d, the len of the log is %d\n",rf.me, args.PrevLogIndex, len(rf.log))
+		//fmt.Printf("The id is %d, the prev log index is %d, the len of the log is %d\n",rf.me, args.PrevLogIndex, len(rf.log))
 		if (args.PrevLogIndex > 0 && (!check || rf.log[args.PrevLogIndex-1].Term != args.PrevLogTerm)){
 			reply.Success = false
 		}
 		if(!reply.Success){
+			fmt.Printf("released lock in Append Entries  reply success failed id is %d\n", rf.me)
+			rf.mux.Unlock()
 			return
 		}
 	}
@@ -292,9 +299,11 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 	}
 
 	//fmt.Printf("rf %v og after %+v", rf.me, rf.log) 
-	go rf.applyEntries()
+	rf.applyEntries()
 	go rf.resetTimeout()
 	//apply entries???
+	fmt.Printf("released lock in Append Entries id is %d\n", rf.me)
+	rf.mux.Unlock()
 	return
 	// deal with heartbeat here? 
 }
@@ -334,36 +343,42 @@ func (rf *Raft) sendAppendEntries(peer int, args *AppendEntriesArgs, reply *Appe
 func (rf *Raft) Start(command interface{}) (int, int, bool) {
 	//fmt.Printf("Start is called on id number %d\n", rf.me)
 	rf.mux.Lock()
-	defer rf.mux.Unlock()
+	fmt.Printf("took lock in Start id is %d\n", rf.me)
+	//defer rf.mux.Unlock()
 	index := -1
 	term := rf.currentTerm
 	isLeader := true
 	if (rf.currentState != 0){
 		isLeader = false
 	}
-
+	fmt.Printf("released first lock in Start id is %d\n", rf.me)
+	rf.mux.Unlock()
 	if (isLeader){
 		//fmt.Printf("Inside is leader case in start")
 		newEntry := logEntry{Command: command, 
 							 Term: rf.currentTerm,}
 		rf.log = append(rf.log, newEntry)
 		index = len(rf.log)
-		fmt.Printf("rf %v receive command %v, index is %v ", rf.me, command, index)
+		fmt.Printf("rf %v receive command %v, index is %v\n", rf.me, command, index)
 
 		c := rf.currentTerm
 		for i,_ := range(rf.peers){
 			if (i != rf.me){
+				rf.mux.Lock()
+				fmt.Printf("took lock in Start loop id is %d\n", i)
 				pLIndex := rf.nextIndex[i] -1
 				pLTerm := -1
 				var e []logEntry
+				fmt.Printf("pLIndex is %d\n", pLIndex)
 				if pLIndex > 0 && pLIndex <= len(rf.log){
 					pLTerm = rf.log[pLIndex -1].Term
 					e = rf.log[rf.nextIndex[i]-1:]
 				}else{
 					e = rf.log[:]
 				}
+				fmt.Printf("pLIndex is %d rf.log is %v e is %v, term is %d\n", pLIndex,rf.log,e, pLTerm)
 				//check if still in leader state and term equals the current term
-				fmt.Printf("len of entries is %d\n", len(e))
+				//fmt.Printf("len of entries is %d\n", len(e))
 				aeArgs := &AppendEntriesArgs{Term:c,
 													LeaderId:rf.me,
 													PrevLogIndex: pLIndex,
@@ -373,7 +388,11 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
 													}
 				aeReply := &AppendEntriesReply{}
 				//fmt.Printf("sending command from %d to %d\n", rf.me, i)
-				go rf.sendAE(i, aeArgs, aeReply)
+				rf.mux.Unlock()
+				fmt.Printf("released lock in Start loop id is %d\n", i)
+				rf.sendAE(i, aeArgs, aeReply)
+				//fmt.Printf("released lock in Start loop id is %d\n", rf.me)
+				//rf.mux.Unlock()
 			//need to also check the term? 				
 			}
 		}					
@@ -391,14 +410,19 @@ func (rf *Raft) Kill() {
 
 // when to send heartbeat???
 func (rf *Raft) sendAE (i int, a *AppendEntriesArgs, r *AppendEntriesReply){
+	fmt.Printf("a\n")
 	//fmt.Printf("sent to server : %d\n", i)
 	result := rf.sendAppendEntries(i, a, r)
-	//fmt.Printf("id is %d result is %v r.Success is %v\n",i, result, r.Success)
-	if (result == true){
+	fmt.Printf("id is %d result is %v r.Success is %v\n",i, result, r.Success)
+	//rf.mux.Lock()
+	//defer rf.mux.Unlock()
+	fmt.Printf("b\n")
+	if (result ){
 			rf.mux.Lock()
-			defer rf.mux.Unlock()
+			//defer rf.mux.Unlock()
 		if(rf.currentState != 0){
 			//rf.mux.Unlock()
+			fmt.Printf("c\n")
 			return
 		}
 		// if not leader then return ////////
@@ -407,9 +431,11 @@ func (rf *Raft) sendAE (i int, a *AppendEntriesArgs, r *AppendEntriesReply){
 			rf.currentTerm = r.Term
 			rf.currentState = 1
 			rf.votedFor = -1
+			fmt.Printf("d\n")
 			//rf.mux.Unlock()
 		}
 		if (r.Success == true){
+			fmt.Printf("e\n")
 			if(len(a.Entries)> 0){
 				rf.nextIndex[i] = rf.nextIndex[i] + len(a.Entries)
 				rf.matchIndex[i] = rf.nextIndex[i] - 1
@@ -429,29 +455,46 @@ func (rf *Raft) sendAE (i int, a *AppendEntriesArgs, r *AppendEntriesReply){
 
 			//apply entries ???
 				}
-				go rf.applyEntries()
+				//rf.mux.Unlock()
+				rf.applyEntries()
+				rf.mux.Unlock()
+				fmt.Printf("f\n")
+				return
 			}
 			//rf.mux.Unlock()
 		}else{
+			fmt.Printf("g\n")
 			if(len(a.Entries)> 0){
+				fmt.Printf("h\n")
 				if rf.nextIndex[i] > 1 {
 					rf.nextIndex[i] = rf.nextIndex[i] - 1
 					a.PrevLogIndex = rf.nextIndex[i] - 1
 					a.PrevLogTerm = rf.log[a.PrevLogIndex].Term
 					a.Entries = rf.log[rf.nextIndex[i]-1:]
 					//a.Entries = 
+					rf.mux.Unlock()
+					rf.sendAE(i,a,r)
 					//rf.mux.Unlock()
-					go rf.sendAE(i,a,r)
+					//rf.mux.Unlock()
+					fmt.Printf("i\n")
 					return
 				}
 			}
 			//rf.mux.Unlock()
 
 		}
-		
+		fmt.Printf("j\n")
+		rf.mux.Unlock()
+		return
 		//rf.mux.Unlock()
 	}else{
-		go rf.sendAE(i, a, r)
+		fmt.Printf("k\n")
+		if (len(a.Entries)>0){
+			//rf.mux.Unlock()
+			rf.sendAE(i, a, r)
+		}
+		//rf.mux.Unlock()
+		fmt.Printf("l\n")
 		return
 		
 	}
@@ -467,37 +510,46 @@ func (rf *Raft) heartBeat(){
 	rf.mux.Unlock()
     for{
 		for i,_ := range(rf.peers){
+			fmt.Printf("entered for loop, index is %d\n", i)
 			if (i != rf.me){
-				rf.mux.Lock()
-				if(rf.currentTerm != c || rf.currentState != 0){
-					rf.mux.Unlock()
-					return
-				}
-				rf.mux.Unlock()
-				rf.mux.Lock()
-				pLIndex := rf.nextIndex[i] -1
-				pLTerm := -1
-				var e []logEntry
-				if pLIndex > 0 && pLIndex <= len(rf.log){
-					pLTerm = rf.log[pLIndex -1].Term
-					//e = rf.log[rf.nextIndex[i]-1:]
-				}
-				//check if still in leader state and term equals the current term
-				heartBeatArgs := &AppendEntriesArgs{Term:c,
-													LeaderId:rf.me,
-													PrevLogIndex: pLIndex,
-													PrevLogTerm:pLTerm,
-													Entries: e,
-													LeaderCommit:rf.commitIndex,
-													}
-				heartBeatReply := &AppendEntriesReply{}
-				rf.mux.Unlock()
-				//fmt.Printf("sending heartbeat from %d to %d\n", rf.me, i)
-				go rf.sendAE(i, heartBeatArgs, heartBeatReply)
+					//for{
+						rf.mux.Lock()
+						fmt.Printf("made it inside the for loop, id is %d\n",i) 
+						if(rf.currentTerm != c || rf.currentState != 0){
+							rf.mux.Unlock()
+							return
+						}
+						//rf.mux.Unlock()
+						//rf.mux.Lock()
+						//fmt.Printf("lol\n")
+						pLIndex := rf.nextIndex[i] -1
+						pLTerm := -1
+						var e []logEntry
+						if pLIndex > 0 && pLIndex <= len(rf.log){
+							pLTerm = rf.log[pLIndex -1].Term
+							//e = rf.log[rf.nextIndex[i]-1:]
+						}
+						//check if still in leader state and term equals the current term
+						heartBeatArgs := &AppendEntriesArgs{Term:c,
+															LeaderId:rf.me,
+															PrevLogIndex: pLIndex,
+															PrevLogTerm:pLTerm,
+															Entries: e,
+															LeaderCommit:rf.commitIndex,
+														}
+						//fmt.Printf("hhhhhh\n")
+						heartBeatReply := &AppendEntriesReply{}
+						rf.mux.Unlock()
+						//fmt.Printf("sending heartbeat from %d to %d\n", rf.me, i)
+						rf.sendAE(i, heartBeatArgs, heartBeatReply)
+						//rf.mux.Unlock()
+						//time.Sleep(150 * time.Millisecond)
 			//need to also check the term? 				
-			}
-		}					
-		
+					}
+				}	
+			
+						
+		//fmt.Printf("exited the for loop")
 		time.Sleep(150 * time.Millisecond)
 	}
 }
@@ -513,7 +565,7 @@ func (rf *Raft)sendVR(i int, a *RequestVoteArgs, r* RequestVoteReply, c chan boo
 		}else{
 			rf.mux.Lock()
 			if (r.Term > rf.currentTerm){
-				rf.mux.Lock()
+				//rf.mux.Lock()
 				rf.currentTerm = r.Term
 				rf.currentState = 1
 				rf.votedFor = -1				
@@ -551,7 +603,7 @@ func (rf *Raft) analyzeVotes(c chan bool, t int){
 						rf.nextIndex[i] = l + 1
 					}
 				}
-				fmt.Printf("leader %v log is %+v, nextIndex is %+v\n", rf.me, rf.log, rf.nextIndex)
+				//fmt.Printf("leader %v log is %+v, nextIndex is %+v\n", rf.me, rf.log, rf.nextIndex)
 				//rf.votedFor = rf.me
 				go rf.heartBeat()
 			}
@@ -632,15 +684,16 @@ func (rf *Raft) resetTimeout(){
 
 
 func (rf *Raft) applyEntries() {
-	//fmt.Printf("apply entries called on id %d commit index is %d lastApplied is %d\n", rf.me, rf.commitIndex, rf.lastApplied)
-	rf.mux.Lock()
-	defer rf.mux.Unlock()
+	fmt.Printf("apply entries called on id %d commit index is %d lastApplied is %d\n", rf.me, rf.commitIndex, rf.lastApplied)
+	//rf.mux.Lock()
+	//defer rf.mux.Unlock()
 	m := make(chan ApplyMsg, rf.commitIndex - rf.lastApplied)
 	applyMsgChan := rf.applyCh
 	go func() {
 		for applyMsg := range m {
 			applyMsgChan <- applyMsg
 		}
+		return
 	}()
 	for rf.lastApplied < rf.commitIndex {
 		rf.lastApplied += 1
@@ -656,14 +709,13 @@ func (rf *Raft) applyEntries() {
 		//rf.lastApplied += 1
 	}
 	return
-	//close(mediateChan)
-
 }
 
 func Make(peers []*rpc.ClientEnd, me int, applyCh chan ApplyMsg) *Raft {
-	fmt.Printf("Make called on id %d\n", me);
+	//fmt.Printf("Make called on id %d\n", me);
 	rf := &Raft{}
 	rf.mux.Lock()
+	fmt.Printf("took lock in make id is %d\n", me)
 	rf.peers = peers
 	rf.me = me
 	//fmt.Printf("Make called %d\n", rf.me);
@@ -681,6 +733,7 @@ func Make(peers []*rpc.ClientEnd, me int, applyCh chan ApplyMsg) *Raft {
 	//what is supposed to happen in make? 
 	go rf.resetTimeout()
 	
+	fmt.Printf("released lock in make id is %d\n", me)
 	rf.mux.Unlock()
 	// Your initialization code here (2A, 2B)
 
