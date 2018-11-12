@@ -32,7 +32,7 @@ package raft
 
 import "sync"
 import "github.com/cmu440/rpc"
-//import "fmt"
+import "fmt"
 import "time"
 import "math/rand"
 
@@ -46,8 +46,8 @@ import "math/rand"
 // tester) on the same peer, via the applyCh passed to Make()
 //
 type  logEntry struct{
-	command interface{}
-	term int
+	Command interface{}
+	Term int
 }
 type ApplyMsg struct {
 	Index   int
@@ -73,8 +73,16 @@ type Raft struct {
 	currentState int
 	votedFor int
 	log []logEntry // need this or no?
-	//need a timer here?
 
+	applyCh chan ApplyMsg
+
+	commitIndex int
+	lastApplied int 
+
+	nextIndex []int 
+	matchIndex []int 
+
+	//need a timer here?
 }
 
 //
@@ -90,7 +98,7 @@ func (rf *Raft) GetState() (int, int, bool) {
 	//need to use lock here??
 	var me int
 	var term int
-	var isleader boos
+	var isleader bool
 	// Your code here (2A)
 	//rf.mux.Lock()
 	//defer rf.mux.Unlock()
@@ -108,7 +116,11 @@ func (rf *Raft) GetState() (int, int, bool) {
 type AppendEntriesArgs struct{
 	Term int
 	LeaderId int
-	//Entries []*logEntry
+	PrevLogIndex int
+	PrevLogTerm int
+	
+	Entries []logEntry
+	LeaderCommit int
 
 
 }
@@ -131,6 +143,8 @@ type AppendEntriesReply struct{
 type RequestVoteArgs struct {
 	Term int
 	CandidateId int
+	LastLogIndex int
+	LastLogTerm int
 	// Your data here (2A, 2B)
 }
 
@@ -173,41 +187,53 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 		reply.Term = rf.currentTerm
 		rf.currentState = 1
 		rf.currentTerm = args.Term
-		rf.votedFor = -1		
+		rf.votedFor = -1
+		reply.VoteGranted = true		
 		go rf.resetTimeout()
 	}
 	if (rf.votedFor == -1){
-		reply.VoteGranted = true
-		rf.votedFor = args.CandidateId
-		reply.Term = rf.currentTerm
-	} 
-	/*else if (rf.votedFor  == args.CandidateId){
-		reply.VoteGranted = true
-		rf.votedFor = args.CandidateId
-		reply.Term = rf.currentTerm
-	}*/
-	/*
-	if(rf.currentState == 1 && reply.VoteGranted == true){
+
+		l := len(rf.log)
+		s:= l > 0 && (rf.log[l-1].Term > args.LastLogTerm || (rf.log[l-1].Term  == args.LastLogTerm && l > args.LastLogIndex))
+		//need to check if its bigger than 0 
+		if(!s){		
+				reply.VoteGranted = true
+				rf.votedFor = args.CandidateId
+				reply.Term = rf.currentTerm
+		} 
+	}else if (rf.votedFor  == args.CandidateId){
+		l := len(rf.log)
+		//need to check if its bigger than 0 
+		if(l > 0){
+			if(rf.log[l-1].Term > args.LastLogTerm || rf.log[l-1].Term  == args.LastLogTerm && l > args.LastLogIndex){
+				reply.VoteGranted = true
+				rf.votedFor = args.CandidateId
+				reply.Term = rf.currentTerm
+			}
+		}
+	}
+	
+	if(reply.VoteGranted == true){
 		go rf.resetTimeout()
-	}*/
+	}
 	//rf.mux.Unlock()
 	return
 }
 
 
 func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply){
-	//need to lock here?
 	rf.mux.Lock()
-	//fmt.Printf("AppendEntries is called\n")
+	//need to lock here?
+	defer rf.mux.Unlock()
+	reply.Success = true
 	if(args.Term < rf.currentTerm){
 		reply.Term = rf.currentTerm
-		//reply.Success = false
+		reply.Success = false
 		
 	}else if(args.Term == rf.currentTerm){
-		//if follower then resetelection 
-			//then candidate
-		//if candidate then follower
 		if (rf.currentState == 1){
+			reply.Term = rf.currentTerm
+			reply.Success = true
 			//fmt.Printf("follower reseting the timeout")
 			go rf.resetTimeout()
 
@@ -215,65 +241,64 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 		if (rf.currentState == 2){
 			//fmt.Printf("candidate reseting the timeout")
 			reply.Term = rf.currentTerm
+			reply.Success = true
 			rf.currentState = 1
 			rf.currentTerm = args.Term
 			rf.votedFor = -1
 			go rf.resetTimeout()
 		}
-	}else{
+	} else{
 		reply.Term = rf.currentTerm
 		rf.currentState = 1
 		rf.currentTerm = args.Term
-		rf.votedFor = -1		
+		rf.votedFor = -1	
+		reply.Success = true	
 	}
-	rf.mux.Unlock()
+
+	//
+	if (len(args.Entries) >0){
+		check := args.PrevLogIndex> 0 && len(rf.log)  >= args.PrevLogIndex
+		fmt.Printf("The id is %d, the prev log index is %d, the len of the log is %d\n",rf.me, args.PrevLogIndex, len(rf.log))
+		if (args.PrevLogIndex > 0 && (!check || rf.log[args.PrevLogIndex-1].Term != args.PrevLogTerm)){
+			reply.Success = false
+		}
+		if(!reply.Success){
+			return
+		}
+	}
+	//}
+	//fmt.Printf("rf %v log before %+v", rf.me, rf.log)
+	/* reply .success is false then return*/
+	//fmt.Printf("the length of args.Entries is %d\n", len(args.Entries))
+
+	for i, e := range args.Entries{
+		if(args.PrevLogIndex + 1 + i >0 && len(rf.log) >= args.PrevLogIndex + 1 + i){
+			if(rf.log[args.PrevLogIndex + i].Term != e.Term){
+				rf.log = rf.log[:args.PrevLogIndex + i]
+			}
+			rf.log = append(rf.log, e)
+		}else{
+			rf.log = append(rf.log, e)
+		}
+	}
+
+	if(args.LeaderCommit > rf.commitIndex){
+		//check if lene args.entries is greater than 0
+		if (len(args.Entries) >0 && args.LeaderCommit > args.PrevLogIndex + len(args.Entries)){
+			rf.commitIndex = args.PrevLogIndex + len(args.Entries)
+		}else{
+			rf.commitIndex = args.LeaderCommit
+		}
+	}
+
+	//fmt.Printf("rf %v og after %+v", rf.me, rf.log) 
+	go rf.applyEntries()
+	go rf.resetTimeout()
+	//apply entries???
 	return
 	// deal with heartbeat here? 
 }
-//
-// sendRequestVote
-// ===============
-//
-// Example code to send a RequestVote RPC to a peer
-//
-// peer int -- index of the target peer in
-// rf.peers[]
-//
-// args *RequestVoteArgs -- RPC arguments in args
-//
-// reply *RequestVoteReply -- RPC reply
-//
-// The types of args and reply passed to Call() must be
-// the same as the types of the arguments declared in the
-// handler function (including whether they are pointers)
-//
-// The rpc package simulates a lossy network, in which peers
-// may be unreachable, and in which requests and replies may be lost
-//
-// Call() sends a request and waits for a reply
-//
-// If a reply arrives within a timeout interval, Call() returns true;
-// otherwise Call() returns false
-//
-// Thus Call() may not return for a while
-//
-// A false return can be caused by a dead peer, a live peer that
-// can't be reached, a lost request, or a lost reply
-//
-// Call() is guaranteed to return (perhaps after a delay)
-// *except* if the handler function on the peer side does not return
-//
-// Thus there
-// is no need to implement your own timeouts around Call()
-//
-// Please look at the comments and documentation in ../rpc/rpc.go
-// for more details
-//
-// If you are having trouble getting RPC to work, check that you have
-// capitalized all field names in the struct passed over RPC, and
-// that the caller passes the address of the reply struct with "&",
-// not the struct itself
-//
+
 func (rf *Raft) sendRequestVote(peer int, args *RequestVoteArgs, reply *RequestVoteReply) bool {
 	ok := rf.peers[peer].Call("Raft.RequestVote", args, reply)
 	return ok
@@ -307,60 +332,76 @@ func (rf *Raft) sendAppendEntries(peer int, args *AppendEntriesArgs, reply *Appe
 // the leader
 //
 func (rf *Raft) Start(command interface{}) (int, int, bool) {
+	//fmt.Printf("Start is called on id number %d\n", rf.me)
+	rf.mux.Lock()
+	defer rf.mux.Unlock()
 	index := -1
-	term := -1
+	term := rf.currentTerm
 	isLeader := true
+	if (rf.currentState != 0){
+		isLeader = false
+	}
 
-	// Your code here (2B)
+	if (isLeader){
+		//fmt.Printf("Inside is leader case in start")
+		newEntry := logEntry{Command: command, 
+							 Term: rf.currentTerm,}
+		rf.log = append(rf.log, newEntry)
+		index = len(rf.log)
+		fmt.Printf("rf %v receive command %v, index is %v ", rf.me, command, index)
+
+		c := rf.currentTerm
+		for i,_ := range(rf.peers){
+			if (i != rf.me){
+				pLIndex := rf.nextIndex[i] -1
+				pLTerm := -1
+				var e []logEntry
+				if pLIndex > 0 && pLIndex <= len(rf.log){
+					pLTerm = rf.log[pLIndex -1].Term
+					e = rf.log[rf.nextIndex[i]-1:]
+				}else{
+					e = rf.log[:]
+				}
+				//check if still in leader state and term equals the current term
+				fmt.Printf("len of entries is %d\n", len(e))
+				aeArgs := &AppendEntriesArgs{Term:c,
+													LeaderId:rf.me,
+													PrevLogIndex: pLIndex,
+													PrevLogTerm:pLTerm,
+													Entries: e,
+													LeaderCommit:rf.commitIndex,
+													}
+				aeReply := &AppendEntriesReply{}
+				//fmt.Printf("sending command from %d to %d\n", rf.me, i)
+				go rf.sendAE(i, aeArgs, aeReply)
+			//need to also check the term? 				
+			}
+		}					
+
+	}
 
 	return index, term, isLeader
 }
 
-//
-// Kill
-// ====
-//
-// The tester calls Kill() when a Raft instance will not
-// be needed again
-//
-// You are not required to do anything
-// in Kill(), but it might be convenient to (for example)
-// turn off debug output from this instance
-//
+
 func (rf *Raft) Kill() {
 	// Your code here, if desired
 }
 
-//
-// Make
-// ====
-//
-// The service or tester wants to create a Raft peer
-//
-// The port numbers of all the Raft peers (including this one)
-// are in peers[]
-//
-// This peer's port is peers[me]
-//
-// All the peers' peers[] arrays have the same order
-//
-// applyCh
-// =======
-//
-// applyCh is a channel on which the tester or service expects
-// Raft to send ApplyMsg messages
-//
-// Make() must return quickly, so it should start Goroutines
-// for any long-running work
-//
 
 // when to send heartbeat???
-func (rf *Raft) sendHeartBeat (i int, a *AppendEntriesArgs, r *AppendEntriesReply){
+func (rf *Raft) sendAE (i int, a *AppendEntriesArgs, r *AppendEntriesReply){
+	//fmt.Printf("sent to server : %d\n", i)
 	result := rf.sendAppendEntries(i, a, r)
-	//fmt.Printf("the result is %b\n",result)
+	//fmt.Printf("id is %d result is %v r.Success is %v\n",i, result, r.Success)
 	if (result == true){
-		//lock here?
 			rf.mux.Lock()
+			defer rf.mux.Unlock()
+		if(rf.currentState != 0){
+			//rf.mux.Unlock()
+			return
+		}
+		// if not leader then return ////////
 		if (r.Term > rf.currentTerm){
 			//fmt.Printf("In this case")
 			rf.currentTerm = r.Term
@@ -368,40 +409,102 @@ func (rf *Raft) sendHeartBeat (i int, a *AppendEntriesArgs, r *AppendEntriesRepl
 			rf.votedFor = -1
 			//rf.mux.Unlock()
 		}
-		rf.mux.Unlock()
+		if (r.Success == true){
+			if(len(a.Entries)> 0){
+				rf.nextIndex[i] = rf.nextIndex[i] + len(a.Entries)
+				rf.matchIndex[i] = rf.nextIndex[i] - 1
+				//what is going on here
+				for ind:= rf.commitIndex + 1; ind <= len(rf.log); ind++ {
+					c := 1
+					for m, j := range rf.matchIndex{
+						if j >= ind && m != rf.me{
+							c+= 1
+						}
+					}
+					if (c > len(rf.peers)/2){
+						if (rf.log[ind-1].Term == rf.currentTerm){
+							rf.commitIndex = ind
+						}
+					}
+
+			//apply entries ???
+				}
+				go rf.applyEntries()
+			}
+			//rf.mux.Unlock()
+		}else{
+			if(len(a.Entries)> 0){
+				if rf.nextIndex[i] > 1 {
+					rf.nextIndex[i] = rf.nextIndex[i] - 1
+					a.PrevLogIndex = rf.nextIndex[i] - 1
+					a.PrevLogTerm = rf.log[a.PrevLogIndex].Term
+					a.Entries = rf.log[rf.nextIndex[i]-1:]
+					//a.Entries = 
+					//rf.mux.Unlock()
+					go rf.sendAE(i,a,r)
+					return
+				}
+			}
+			//rf.mux.Unlock()
+
+		}
+		
+		//rf.mux.Unlock()
 	}else{
-		rf.sendHeartBeat(i, a, r)
+		go rf.sendAE(i, a, r)
+		return
+		
 	}
 
 }
 
 func (rf *Raft) heartBeat(){
+	fmt.Printf("heartbeat function called")
+	
 	rf.mux.Lock()
-	c := rf.currentState
+	c := rf.currentTerm
+	//s := rf.currentState
 	rf.mux.Unlock()
     for{
-    	if(c == 0){
-    		for i,_ := range(rf.peers){
-				if (i != rf.me){
-					heartBeatArgs := &AppendEntriesArgs{Term:c,
-														LeaderId:rf.me,
-														}
-					heartBeatReply := &AppendEntriesReply{}
-					//fmt.Printf("sending heartbeat from %d to %d\n", rf.me, i)
-					go rf.sendHeartBeat(i, heartBeatArgs, heartBeatReply)
-				//need to also check the term? 				
+		for i,_ := range(rf.peers){
+			if (i != rf.me){
+				rf.mux.Lock()
+				if(rf.currentTerm != c || rf.currentState != 0){
+					rf.mux.Unlock()
+					return
 				}
-			}					
-		} else{
-			return
-		}		
-		time.Sleep(200 * time.Millisecond)
+				rf.mux.Unlock()
+				rf.mux.Lock()
+				pLIndex := rf.nextIndex[i] -1
+				pLTerm := -1
+				var e []logEntry
+				if pLIndex > 0 && pLIndex <= len(rf.log){
+					pLTerm = rf.log[pLIndex -1].Term
+					//e = rf.log[rf.nextIndex[i]-1:]
+				}
+				//check if still in leader state and term equals the current term
+				heartBeatArgs := &AppendEntriesArgs{Term:c,
+													LeaderId:rf.me,
+													PrevLogIndex: pLIndex,
+													PrevLogTerm:pLTerm,
+													Entries: e,
+													LeaderCommit:rf.commitIndex,
+													}
+				heartBeatReply := &AppendEntriesReply{}
+				rf.mux.Unlock()
+				//fmt.Printf("sending heartbeat from %d to %d\n", rf.me, i)
+				go rf.sendAE(i, heartBeatArgs, heartBeatReply)
+			//need to also check the term? 				
+			}
+		}					
+		
+		time.Sleep(150 * time.Millisecond)
 	}
 }
 
 func (rf *Raft)sendVR(i int, a *RequestVoteArgs, r* RequestVoteReply, c chan bool){	
 	result := rf.sendRequestVote(i, a, r)	
-	//fmt.Printf("the result from vote request sent to %d is %t\n", i, result)
+	//fmt.Printf("the result from vote request sent to %d is %t and voteGranted is %t\n", i, result, r.VoteGranted)
 	if (result){
 		if (r.VoteGranted){
 			//fmt.Printf("sent true on channel to raft %d from id %d\n",rf.me, i )
@@ -429,24 +532,35 @@ func (rf *Raft) analyzeVotes(c chan bool, t int){
 	count := 0
 	for elem := range(c){
 		rf.mux.Lock()
-		defer rf.mux.Unlock()
+		
 		// check if the term is the same by locking?
+		if(rf.currentTerm != t){
+			return
+		}
 		if (elem == true){
 			//fmt.Printf("inside the elem is true case for the id %d\n", rf.me)
 			count += 1 
 		}
 		if (count + 1 > totalPeers/2){
-			//fmt.Printf("Became a leader %d\n", rf.me)
+			fmt.Printf("Became a leader %d\n", rf.me)
 			if (rf.currentState == 2){
 				rf.currentState = 0
+				l := len(rf.log)
+				for i:= range rf.peers {
+					if (i != rf.me){
+						rf.nextIndex[i] = l + 1
+					}
+				}
+				fmt.Printf("leader %v log is %+v, nextIndex is %+v\n", rf.me, rf.log, rf.nextIndex)
 				//rf.votedFor = rf.me
 				go rf.heartBeat()
 			}
-			//rf.mux.Unlock()
+			rf.mux.Unlock()
 			return 
 			//start go routine that sends heatbeats //only do this if it is still in a valid state
 			// need to end this go routine at some point			
-		}		
+		}
+		rf.mux.Unlock()		
 	}
 	return
 }
@@ -464,9 +578,18 @@ func (rf *Raft) newElection(){
 			//fmt.Printf("me is %d\n",rf.me)
 			//fmt.Printf("votedFor is %d\n", rf.votedFor)
 			//fmt.Printf("send vote request to %d from %d\n", i, rf.me)
+			rf.mux.Lock()
+			l:= -1
+			if(len(rf.log)>0){
+				l= rf.log[len(rf.log)-1].Term
+			}
 			sendVoteArgs := &RequestVoteArgs{Term:rf.currentTerm,
-											 CandidateId:rf.me}
+											 CandidateId:rf.me,
+											 LastLogIndex: len(rf.log),
+											 LastLogTerm: l,
+										}
 			sendVoteReply := &RequestVoteReply{}
+			rf.mux.Unlock()
 			go rf.sendVR(i, sendVoteArgs, sendVoteReply, votes)
 		}
 	}
@@ -479,7 +602,7 @@ func (rf *Raft) resetTimeout(){
 	// should this be for select?
 	//fmt.Printf("resetTimeout is called %d %d\n", rf.me, rf.currentState )
 	rand.Seed(int64(rf.me))
-	l := rand.Intn(750,) + 400
+	l := rand.Intn(150) + 150
 	timer := time.NewTimer(time.Duration(l) * time.Millisecond)
 	rf.mux.Lock()
 	t := rf.currentTerm
@@ -507,8 +630,38 @@ func (rf *Raft) resetTimeout(){
 	return
 }
 
+
+func (rf *Raft) applyEntries() {
+	//fmt.Printf("apply entries called on id %d commit index is %d lastApplied is %d\n", rf.me, rf.commitIndex, rf.lastApplied)
+	rf.mux.Lock()
+	defer rf.mux.Unlock()
+	m := make(chan ApplyMsg, rf.commitIndex - rf.lastApplied)
+	applyMsgChan := rf.applyCh
+	go func() {
+		for applyMsg := range m {
+			applyMsgChan <- applyMsg
+		}
+	}()
+	for rf.lastApplied < rf.commitIndex {
+		rf.lastApplied += 1
+		command := rf.log[rf.lastApplied-1].Command
+		i := rf.lastApplied
+		//fmt.Printf("rf %v send committedIndex %v, command %v\n", rf.me, i, command)
+		//fmt.Printf("rf %v lastApplied is %v\n", rf.me, rf.lastApplied)
+		m <- ApplyMsg{
+			Index: i,
+			Command: command,
+
+		}
+		//rf.lastApplied += 1
+	}
+	return
+	//close(mediateChan)
+
+}
+
 func Make(peers []*rpc.ClientEnd, me int, applyCh chan ApplyMsg) *Raft {
-	//fmt.Print("Make called");
+	fmt.Printf("Make called on id %d\n", me);
 	rf := &Raft{}
 	rf.mux.Lock()
 	rf.peers = peers
@@ -516,12 +669,15 @@ func Make(peers []*rpc.ClientEnd, me int, applyCh chan ApplyMsg) *Raft {
 	//fmt.Printf("Make called %d\n", rf.me);
 	//what is supposed to happen in make? 
 	//lock here??
-	
 
 	rf.votedFor = -1
 	rf.currentTerm = 0
 	rf.currentState = 1 //does raft start off as a follower
-
+	rf.applyCh = applyCh
+	n := make([]int, len(rf.peers))
+	m := make([]int, len(rf.peers))
+	rf.nextIndex = n
+	rf.matchIndex = m 
 	//what is supposed to happen in make? 
 	go rf.resetTimeout()
 	
