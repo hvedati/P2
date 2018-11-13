@@ -236,6 +236,45 @@ func TestFailNoAgree2B(t *testing.T) {
 
 	fmt.Printf("======================= END =======================\n\n")
 }
+/*
+func TestHidden2A(t *testing.T){
+	servers := 3
+	cfg := make_config(t, servers, false)
+	defer cfg.cleanup()
+
+	fmt.Printf("Test (2A): Re-election\n")
+	fmt.Printf("Basic 1 leader\n")
+	leader1 := cfg.checkOneLeader()
+
+	// if the leader disconnects, a new one should be elected.
+	fmt.Printf("Disconnecting leader\n")
+	cfg.disconnect(leader1)
+
+	// a new leader should be elected
+	fmt.Printf("Checking for a new leader\n")
+	cfg.checkOneLeader()
+
+	fmt.Printf("Reconnecting old leader\n")
+	cfg.connect(leader1)
+
+	fmt.Printf("Checking current leader\n")
+	leader2 :=cfg.checkOneLeader()
+	fmt.Printf("leader is %d\n", leader2)
+
+
+	fmt.Printf("Disconnecting leader + one peer\n")
+	cfg.disconnect(leader2)
+	cfg.disconnect((leader2 + 1) % servers)
+	
+	time.Sleep(RaftElectionTimeout)
+	
+
+	cfg.checkNoLeader()
+	cfg.connect((leader2 + 1) % servers)
+
+
+
+}*/
 
 func TestConcurrentStarts2B(t *testing.T) {
 	fmt.Printf("==================== 3 SERVERS ====================\n")

@@ -223,9 +223,9 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
         }
 	}
 	
-	//if(reply.VoteGranted == true && rf.currentState == 1){
+	if(reply.VoteGranted == true && rf.currentState == 1){
 		//rf.resetTimeout()
-	//}
+	}
 	return
 }
 
@@ -466,6 +466,7 @@ func (rf *Raft)sendVR(i int, a *RequestVoteArgs, r* RequestVoteReply, c chan boo
 		}
 	
 	}
+    return
 }
 
 
