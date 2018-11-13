@@ -222,7 +222,7 @@ func TestFailNoAgree2B(t *testing.T) {
 	// among their own ranks, forgetting index 2.
 	// or perhaps
 	leader2 := cfg.checkOneLeader()
-	fmt.Printf("Leader 2 is %d\n", leader2)
+	//fmt.Printf("Leader 2 is %d\n", leader2)
 	index2, _, ok2 := cfg.rafts[leader2].Start(30)
 	if !ok2 {
 		t.Fatalf("Leader2 rejected Start()")
@@ -715,7 +715,7 @@ func (cfg *config) one(cmd int, expectedServers int) int {
 			for time.Since(t1).Seconds() < 2 {
 
 				nd, cmd1 := cfg.nCommitted(index)
-				fmt.Printf("nd is %d\n", nd)
+				//fmt.Printf("nd is %d\n", nd)
 				if nd > 0 && nd >= expectedServers {
 					// committed
 					if cmd2, ok := cmd1.(int); ok && cmd2 == cmd {
