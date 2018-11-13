@@ -224,7 +224,7 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 	}
 	
 	if(reply.VoteGranted == true && rf.currentState == 1){
-		//rf.resetTimeout()
+		rf.resetTimeout()
 	}
 	return
 }
@@ -299,7 +299,7 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 		}
 	}
 	rf.sendEntries()
-	return
+	//return
 	// deal with heartbeat here? */
 }
 
@@ -428,7 +428,7 @@ func (rf *Raft) actuallySend(c int, i int){
 		}
 
 		if (s){
-            time.Sleep(time.Millisecond * 100)
+            time.Sleep(time.Millisecond * 50)
 		}
 	}
 
@@ -562,7 +562,7 @@ func (rf* Raft) runTimer(t int, timer *time.Timer){
 
 func (rf *Raft) resetTimeout(){
 	rand.Seed(int64(rf.me))
-	l := rand.Intn(400) + 300 
+	l := rand.Intn(300) + 300
 	timer := time.NewTimer(time.Duration(l) * time.Millisecond)
 	//rf.mux.Lock()
 	t := rf.currentTerm

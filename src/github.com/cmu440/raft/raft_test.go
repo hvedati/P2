@@ -236,7 +236,7 @@ func TestFailNoAgree2B(t *testing.T) {
 
 	fmt.Printf("======================= END =======================\n\n")
 }
-/*
+
 func TestHidden2A(t *testing.T){
 	servers := 3
 	cfg := make_config(t, servers, false)
@@ -270,11 +270,16 @@ func TestHidden2A(t *testing.T){
 	
 
 	cfg.checkNoLeader()
+	//cfg.connect((leader2 + 1) % servers)
 	cfg.connect((leader2 + 1) % servers)
 
+	fmt.Printf("Checking for a new leader\n")
+	leader3 := cfg.checkOneLeader()
+	fmt.Printf("leader is %d\n", leader3)
 
 
-}*/
+
+}
 
 func TestConcurrentStarts2B(t *testing.T) {
 	fmt.Printf("==================== 3 SERVERS ====================\n")
