@@ -299,7 +299,7 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 		}
 	}
 	rf.sendEntries()
-	//return
+	return
 	// deal with heartbeat here? */
 }
 
@@ -360,6 +360,49 @@ func (rf *Raft) Kill() {
 	// Your code here, if desired
 }
 
+func (rf *Raft) sendHeartBeats(c int, i int){
+    for{
+        rf.mux.Lock()
+        if(rf.currentTerm != c || rf.currentState != 0){
+                    rf.mux.Unlock()
+                    return
+        }
+
+        pLIndex := rf.nextIndex[i] -1
+        pLTerm := -1
+        var e []logEntry
+
+        if(pLIndex >0 && len(rf.log)>= pLIndex){
+            pLTerm = rf.log[pLIndex-1].Term
+        }
+        a := &AppendEntriesArgs{Term:rf.currentTerm,
+                                        LeaderId:rf.me,
+                                        PrevLogIndex: pLIndex,
+                                        PrevLogTerm:pLTerm,
+                                        Entries: e,
+                                        LeaderCommit:rf.commitIndex,
+                                        }
+        r := &AppendEntriesReply{}
+        rf.mux.Unlock()
+        result := rf.sendAppendEntries(i, a, r)
+        
+        if(result){
+            rf.mux.Lock()
+            if (r.Term > rf.currentTerm){
+                rf.currentState = 1
+                rf.currentTerm = r.Term
+                rf.votedFor = -1
+                rf.resetTimeout()
+            }
+            if(rf.currentState != 0){
+                rf.mux.Unlock()
+                return
+            }
+            rf.mux.Unlock()
+        }
+        time.Sleep(time.Millisecond * 100)
+}
+}
 func (rf *Raft) actuallySend(c int, i int){
 	for{
 		rf.mux.Lock()
@@ -376,7 +419,7 @@ func (rf *Raft) actuallySend(c int, i int){
 			pLTerm = rf.log[pLIndex-1].Term
 			e = rf.log[rf.nextIndex[i] - 1:]
 		}else{
-			e = rf.log[:]
+			e = rf.log
 		}
 		a := &AppendEntriesArgs{Term:rf.currentTerm,
 										LeaderId:rf.me,
@@ -388,7 +431,7 @@ func (rf *Raft) actuallySend(c int, i int){
 		r := &AppendEntriesReply{}
 		rf.mux.Unlock()
 		result := rf.sendAppendEntries(i, a, r)
-		s := true
+		//s := true
 		if(result){
 			rf.mux.Lock()
 			if (r.Term > rf.currentTerm){
@@ -422,14 +465,14 @@ func (rf *Raft) actuallySend(c int, i int){
 				if rf.nextIndex[i] > 1 {
                     rf.nextIndex[i] = rf.nextIndex[i] - 1
                 }
-                s = false
+                //s = false
 			}
 			rf.mux.Unlock()
 		}
 
-		if (s){
-            time.Sleep(time.Millisecond * 50)
-		}
+		//if (s){
+          ///  time.Sleep(time.Millisecond * 50)
+		//}
 	}
 
 }
@@ -441,6 +484,7 @@ func (rf *Raft) sendAE(){
 	for i,_ := range(rf.peers){
 		if (i != rf.me){
 			go rf.actuallySend(c, i)
+            go rf.sendHeartBeats(c,i)
 		}
 	}	
 }
