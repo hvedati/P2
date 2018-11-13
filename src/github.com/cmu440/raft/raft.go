@@ -454,14 +454,16 @@ func (rf *Raft)sendVR(i int, a *RequestVoteArgs, r* RequestVoteReply, c chan boo
 			c<- true
 
 		}else{
+            rf.mux.Lock()
 			if (r.Term > rf.currentTerm){
 				rf.mux.Lock()
 				rf.currentTerm = r.Term
 				rf.currentState = 1
 				rf.votedFor = -1	
 				rf.resetTimeout()
-				rf.mux.Unlock()			
+						
 			}
+            rf.mux.Unlock()
 			c <- false
 		}
 	
@@ -560,7 +562,7 @@ func (rf* Raft) runTimer(t int, timer *time.Timer){
 
 func (rf *Raft) resetTimeout(){
 	rand.Seed(int64(rf.me))
-	l := rand.Intn(400) + 500
+	l := rand.Intn(400) + 300 
 	timer := time.NewTimer(time.Duration(l) * time.Millisecond)
 	//rf.mux.Lock()
 	t := rf.currentTerm

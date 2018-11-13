@@ -145,33 +145,33 @@ func TestFailAgree2B(t *testing.T) {
 	// follower network disconnection
 	fmt.Printf("Checking one leader\n")
 	leader := cfg.checkOneLeader()
-	fmt.Printf("Leader is %d\n :", leader)
+	//fmt.Printf("Leader is %d\n :", leader)
 	cfg.disconnect((leader + 1) % servers)
-	fmt.Printf("Disconnected Peer is %d\n", (leader + 1) % servers)
+	//fmt.Printf("Disconnected Peer is %d\n", (leader + 1) % servers)
 
 	fmt.Printf("Checking agreement with one disconnected peer\n")
 	// agree despite two disconnected servers?
 	cfg.one(102, servers-1)
-	fmt.Printf("A\n")
+	//fmt.Printf("A\n")
 	cfg.one(103, servers-1)
-	fmt.Printf("B\n")
+	//fmt.Printf("B\n")
 	time.Sleep(RaftElectionTimeout)
-	fmt.Printf("lolol\n")
+	//fmt.Printf("lolol\n")
 	cfg.one(104, servers-1)
-	fmt.Printf("C\n")
+	//fmt.Printf("C\n")
 	cfg.one(105, servers-1)
-	fmt.Printf("D\n")
+	//fmt.Printf("D\n")
 
 	// re-connect
 	cfg.connect((leader + 1) % servers)
 	fmt.Printf("reconnected Peer is %d\n", (leader + 1) % servers)
 	fmt.Printf("Checking with one reconnected server\n")
 	// agree with full set of servers?
-	fmt.Printf("e\n")
+	//fmt.Printf("e\n")
 	cfg.one(106, servers)
-	fmt.Printf("f\n")
+	//fmt.Printf("f\n")
 	time.Sleep(RaftElectionTimeout)
-	fmt.Printf("g\n")
+	//fmt.Printf("g\n")
 	cfg.one(107, servers)
 
 	fmt.Printf("======================= END =======================\n\n")
