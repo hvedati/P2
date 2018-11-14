@@ -1,6 +1,4 @@
 
-
-
 // raft.go
 // =======
 // Write your code in this file
@@ -244,12 +242,12 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
         if (rf.currentState == 1){
             reply.Term = rf.currentTerm
             reply.Success = true
-            //fmt.Printf("follower reseting the timeout")
+            //fmt.Printf("follower reseting the timeout\n")
             rf.resetTimeout()
 
         }
         if (rf.currentState == 2){
-            //fmt.Printf("candidate reseting the timeout")
+            //fmt.Printf("candidate reseting the timeout\n")
             reply.Term = rf.currentTerm
             reply.Success = true
             rf.currentState = 1
@@ -291,15 +289,16 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
         }
         rf.log = append(rf.log, e)
     }
-
+    //fmt.Printf("the leader commit is %d and the commit index is %d\n ", args.LeaderCommit, rf.commitIndex)
     if(args.LeaderCommit > rf.commitIndex){
-        //check if lene args.entries is greater than 0
-        if (len(args.Entries) >0 && args.LeaderCommit > args.PrevLogIndex + len(args.Entries)){
+       if (len(args.Entries) >0 && args.LeaderCommit > args.PrevLogIndex + len(args.Entries)){
             rf.commitIndex = args.PrevLogIndex + len(args.Entries)
         }else{
             rf.commitIndex = args.LeaderCommit
         }
     }
+    //fmt.Printf("sent to apply ch %d\n", rf.me)
+    //fmt.Printf("the log for id %d is %v\n", rf.me, rf.log)
     rf.sendEntries()
     //return
     // deal with heartbeat here? */
@@ -338,8 +337,9 @@ func (rf *Raft) sendAppendEntries(peer int, args *AppendEntriesArgs, reply *Appe
 // the leader
 //
 func (rf *Raft) Start(command interface{}) (int, int, bool) {
-    //fmt.Printf("Start is called on id number %d\n", rf.me)
+   // fmt.Printf("Start is called on id number %d\n", rf.me)
     rf.mux.Lock()
+   
     defer rf.mux.Unlock()
     index := -1
     term := rf.currentTerm
@@ -348,10 +348,13 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
         isLeader = false
     }
     if (isLeader){
+        //fmt.Printf("START is called on id number %d command is%v\n", rf.me, command)
         newEntry := logEntry{Command: command, 
                              Term: rf.currentTerm,}
         rf.log = append(rf.log, newEntry)
         index = len(rf.log)
+        //fmt.Printf("rf %v receive command %v, index is %v log is %v\n", rf.me, command, index, rf.log)
+        rf.sendAE()
         //fmt.Printf("rf %v receive command %v, index is %v ", rf.me, command, index)
     }
     return index, term, isLeader
@@ -362,7 +365,7 @@ func (rf *Raft) Kill() {
     // Your code here, if desired
 }
 
-func (rf *Raft) actuallySend(c int, i int){
+func (rf *Raft) sendHeartBeats(c int, i int){
     for{
         rf.mux.Lock()
         if(rf.currentTerm != c || rf.currentState != 0){
@@ -376,9 +379,6 @@ func (rf *Raft) actuallySend(c int, i int){
 
         if(pLIndex >0 && len(rf.log)>= pLIndex){
             pLTerm = rf.log[pLIndex-1].Term
-            e = rf.log[rf.nextIndex[i] - 1:]
-        }else{
-            e = rf.log[:]
         }
         a := &AppendEntriesArgs{Term:rf.currentTerm,
                                         LeaderId:rf.me,
@@ -388,11 +388,11 @@ func (rf *Raft) actuallySend(c int, i int){
                                         LeaderCommit:rf.commitIndex,
                                         }
         r := &AppendEntriesReply{}
-        rf.mux.Unlock()
+        //rf.mux.Unlock()
         result := rf.sendAppendEntries(i, a, r)
-        s := true
+        //fmt.Printf("heart beat sent to %d from %d and result was %t\n",i, rf.me, result )
         if(result){
-            rf.mux.Lock()
+            //rf.mux.Lock()
             if (r.Term > rf.currentTerm){
                 rf.currentState = 1
                 rf.currentTerm = r.Term
@@ -403,46 +403,135 @@ func (rf *Raft) actuallySend(c int, i int){
                 rf.mux.Unlock()
                 return
             }
-            if (r.Success){
-                rf.nextIndex[i] = rf.nextIndex[i] + len(a.Entries)
-                rf.matchIndex[i] = rf.nextIndex[i] - 1
-                for ind:= rf.commitIndex + 1; ind <= len(rf.log); ind++ {
-                    c := 1
-                    for m, j := range rf.matchIndex{
-                        if j >= ind && m != rf.me{
-                            c+= 1
-                        }
-                    }
-                    if (c > len(rf.peers)/2){
-                        if (rf.log[ind-1].Term == rf.currentTerm){
-                            rf.commitIndex = ind
-                        }
-                    }
-                }
-                rf.sendEntries()
-            }else{
-                if rf.nextIndex[i] > 1 {
-                    rf.nextIndex[i] = rf.nextIndex[i] - 1
-                }
-                s = false
-            }
+            rf.mux.Unlock()
+        }else{
             rf.mux.Unlock()
         }
+        time.Sleep(time.Millisecond * 100)
+}
+}
 
-        if (s){
-            time.Sleep(time.Millisecond * 50)
+func (rf *Raft) majorityReceived(majority chan bool, cIndex int){
+
+}
+func (rf *Raft) actuallySend(c int, i int){
+    for{
+        rf.mux.Lock()
+        if(rf.currentTerm != c || rf.currentState != 0){
+                    rf.mux.Unlock()
+                    return
         }
+
+        pLIndex := rf.nextIndex[i] -1
+        pLTerm := -1
+        var e []logEntry
+
+        //if(pLIndex >0 && len(rf.log)>= pLIndex){
+
+        //fmt.Printf("sending command to server %d from server %d pLIndex is %d length of log is %d nextIndex[i] is %d\n", i, rf.me,pLIndex, len(rf.log),rf.nextIndex[i] )
+        //if(pLIndex >0 && len(rf.log)>=pLIndex){
+        if (pLIndex < len(rf.log)){
+            pLTerm = rf.log[pLIndex].Term
+            e = rf.log[rf.nextIndex[i] - 1:]
+            //}else{
+                //e = rf.log
+            //}
+            //fmt.Printf("sending command to server %d from server %d pLIndex is %d length of log is %d entires are %v\n", i, rf.me,pLIndex, len(rf.log), e)
+            //fmt.Printf("%v\n", e)
+            a := &AppendEntriesArgs{Term:rf.currentTerm,
+                                            LeaderId:rf.me,
+                                            PrevLogIndex: pLIndex,
+                                            PrevLogTerm:pLTerm,
+                                            Entries: e,
+                                            LeaderCommit:rf.commitIndex,
+                                            }
+            r := &AppendEntriesReply{}
+            //rf.mux.Unlock()
+            result := rf.sendAppendEntries(i, a, r)
+            s := true
+            if(result){
+                //rf.mux.Lock()
+                if (r.Term > rf.currentTerm){
+                    rf.currentState = 1
+                    rf.currentTerm = r.Term
+                    rf.votedFor = -1
+                    rf.resetTimeout()
+                }
+                if(rf.currentState != 0){
+                    rf.mux.Unlock()
+                    return
+                }
+                if (r.Success){
+                    //fmt.Printf("result is a SUCCESS for id %d length of entries is %d entries are %v\n", i, len(a.Entries), a.Entries)
+                    rf.nextIndex[i] = rf.nextIndex[i] + len(a.Entries)
+                    //fmt.Printf("the id is %d the value is %d\n", i, rf.nextIndex[i])
+                    rf.matchIndex[i] = rf.nextIndex[i] - 1
+                    for ind:= rf.commitIndex + 1; ind <= len(rf.log); ind++ {
+                        c := 1
+                        for m, j := range rf.matchIndex{
+                            if j >= ind && m != rf.me{
+                                c+= 1
+                            }
+                        }
+                        if (c > len(rf.peers)/2){
+                            //rf.nextIndex[i] = rf.nextIndex[i] + len(a.Entries)
+                            //fmt.Printf("the id is %d the value is %d\n", i, rf.nextIndex[i])
+                            //rf.matchIndex[i] = rf.nextIndex[i] - 1
+                            if (rf.log[ind-1].Term == rf.currentTerm){
+                                rf.commitIndex = ind
+                            }
+                             //fmt.Printf("sent to apply channel for leader new commit index is %d\n", rf.commitIndex)
+                             rf.sendEntries()
+                             for i := range(rf.peers){
+                                if (i!= rf.me){
+                                    //rf.peers[i].commitIndex = rf.commitIndex
+                                    //rf.peers[i].sendEntries()
+                                }
+                             }
+                             
+                        }
+                    }
+                   // fmt.Printf("sent to apply channel for leader new commit index is %d\n", rf.commitIndex)
+                    //rf.sendEntries()
+                }else{
+
+                    if rf.nextIndex[i] > 1 {
+                        rf.nextIndex[i] = rf.nextIndex[i] - 1
+                    }
+                    s = false
+                }
+                //rf.mux.Unlock()
+            }else{
+                //rf.mux.Unlock()
+            }
+
+            if (s){
+               rf.mux.Unlock()
+               return
+            }else{
+                rf.mux.Unlock()
+            }
+
+
+
+
+        }else{
+          rf.mux.Unlock()
+        }
+
+        
     }
 
 }
 
 
 func (rf *Raft) sendAE(){
-    //fmt.Printf("send AE called")
+    //fmt.Printf("send AE called on server %d\n", rf.me)
     c := rf.currentTerm
     for i,_ := range(rf.peers){
         if (i != rf.me){
             go rf.actuallySend(c, i)
+            //go rf.sendHeartBeats(c,i)
         }
     }    
 }
@@ -504,7 +593,13 @@ func (rf *Raft) analyzeVotes(c chan bool, t int){
             }
             //fmt.Printf("leader %v log is %+v, nextIndex is %+v\n", rf.me, rf.log, rf.nextIndex)
             //rf.votedFor = rf.me
-            rf.sendAE()
+            //rf.sendAE()
+            for i:= range rf.peers {
+                if (i != rf.me){
+                     go rf.sendHeartBeats(rf.currentTerm,i)
+                }
+            }
+            //go rf.sendHeartBeats(c,i)
             
             rf.mux.Unlock()
             return 
@@ -518,6 +613,7 @@ func (rf *Raft) analyzeVotes(c chan bool, t int){
 
 
 func (rf *Raft) newElection(){
+    //fmt.Printf("new election called %d\n", rf.me)
     rf.currentTerm = rf.currentTerm +1
     numPeers := len(rf.peers)
     votes := make(chan bool, numPeers) // buffered channel? 
@@ -564,7 +660,7 @@ func (rf* Raft) runTimer(t int, timer *time.Timer){
 
 func (rf *Raft) resetTimeout(){
     rand.Seed(int64(rf.me))
-    l := rand.Intn(300) + 300
+    l := rand.Intn(400) + 300
     timer := time.NewTimer(time.Duration(l) * time.Millisecond)
     //rf.mux.Lock()
     t := rf.currentTerm
@@ -573,20 +669,28 @@ func (rf *Raft) resetTimeout(){
 
 func (rf *Raft) sendToApply(m chan ApplyMsg){
     for applyMsg := range m {
+        //tfmt.Printf("sent tot apply channel %d message is %v\n", rf.me, applyMsg)
                 rf.applyCh<- applyMsg
     }
+    return 
 
 }
 func (rf *Raft) sendEntries() {
-    m := make(chan ApplyMsg, rf.commitIndex - rf.lastApplied)
+    //fmt.Printf("send entries called on %d commit index is %d last applied is %d\n", rf.me, rf.commitIndex, rf.lastApplied)
+    m := make(chan ApplyMsg)
     go rf.sendToApply(m)
 
-    for i := rf.lastApplied; i < rf.commitIndex; i++ {
-        command := rf.log[i].Command
-        m <- ApplyMsg{
-            Index: i+1,
-            Command: command,
 
+
+    for i := rf.lastApplied; i < rf.commitIndex + 1; i++ {
+        if (i < len(rf.log)){
+            command := rf.log[i].Command
+            m <- ApplyMsg{
+                Index: i+1,
+                Command: command,
+
+            }
+            rf.lastApplied = i
         }
     }
     return
@@ -615,3 +719,4 @@ func Make(peers []*rpc.ClientEnd, me int, applyCh chan ApplyMsg) *Raft {
 
     return rf
 }
+
