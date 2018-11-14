@@ -298,7 +298,10 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 			rf.commitIndex = args.LeaderCommit
 		}
 	}
-	rf.sendEntries()
+    //if(len(args.Entries)>0){
+        rf.sendEntries()
+    
+	//rf.sendEntries()
 	return
 	// deal with heartbeat here? */
 }
@@ -492,12 +495,12 @@ func (rf *Raft) sendAE(){
 func (rf *Raft)sendVR(i int, a *RequestVoteArgs, r* RequestVoteReply, c chan bool){	
 	result := rf.sendRequestVote(i, a, r)	
 	//fmt.Printf("the result from vote request sent to %d is %t and voteGranted is %t\n", i, result, r.VoteGranted)
-	if (result){
-		if (r.VoteGranted){
+	if (result&& r.VoteGranted){
+		//if (r.VoteGranted){
 			//fmt.Printf("sent true on channel to raft %d from id %d\n",rf.me, i )
 			c<- true
 
-		}else{
+	}else{
             rf.mux.Lock()
 			if (r.Term > rf.currentTerm){
 				rf.mux.Lock()
@@ -511,7 +514,10 @@ func (rf *Raft)sendVR(i int, a *RequestVoteArgs, r* RequestVoteReply, c chan boo
 			c <- false
 		}
 	
-	}
+	
+    //else{
+      //  rf.sendVR(i,a,r,c)
+    //}
     return
 }
 
@@ -555,6 +561,7 @@ func (rf *Raft) analyzeVotes(c chan bool, t int){
 		}
 		rf.mux.Unlock()		
 	}
+    return
 	
 }
 
@@ -600,36 +607,41 @@ func (rf* Raft) runTimer(t int, timer *time.Timer){
             } else if (rf.currentState == 2){
                 rf.newElection()
             }
+            return
     }
 
 }
 
 func (rf *Raft) resetTimeout(){
 	rand.Seed(int64(rf.me))
-	l := rand.Intn(300) + 300
+	l := rand.Intn(130) + 300
 	timer := time.NewTimer(time.Duration(l) * time.Millisecond)
 	//rf.mux.Lock()
 	t := rf.currentTerm
     go rf.runTimer(t, timer)
+    return
 }
 
 func (rf *Raft) sendToApply(m chan ApplyMsg){
     for applyMsg := range m {
                 rf.applyCh<- applyMsg
     }
+    return
 
 }
 func (rf *Raft) sendEntries() {
 	m := make(chan ApplyMsg, rf.commitIndex - rf.lastApplied)
     go rf.sendToApply(m)
-
     for i := rf.lastApplied; i < rf.commitIndex; i++ {
-        command := rf.log[i].Command
-        m <- ApplyMsg{
-            Index: i+1,
-            Command: command,
-
+        //fmt.Printf("the i is %d the len of the log is %d", i , len(rf.log))
+        if(i < len(rf.log)){
+            command := rf.log[i].Command
+            m <- ApplyMsg{
+                Index: i+1,
+                Command: command,
         }
+        }
+    
     }
 	return
 }

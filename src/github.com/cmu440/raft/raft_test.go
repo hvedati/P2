@@ -237,7 +237,7 @@ func TestFailNoAgree2B(t *testing.T) {
 	fmt.Printf("======================= END =======================\n\n")
 }
 
-func TestHidden2A(t *testing.T){
+/*func TestHidden2A(t *testing.T){
 	servers := 3
 	cfg := make_config(t, servers, false)
 	defer cfg.cleanup()
@@ -279,7 +279,7 @@ func TestHidden2A(t *testing.T){
 
 
 
-}
+}*/
 
 func TestConcurrentStarts2B(t *testing.T) {
 	fmt.Printf("==================== 3 SERVERS ====================\n")
