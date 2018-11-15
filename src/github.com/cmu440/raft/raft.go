@@ -430,11 +430,9 @@ func (rf *Raft) actuallySend(c int, i int){
                                             LeaderCommit:rf.commitIndex,
                                             }
             r := &AppendEntriesReply{}
-            //rf.mux.Unlock()
             result := rf.sendAppendEntries(i, a, r)
             needToRetry := false
             if(result){
-                //rf.mux.Lock()
                 if (r.Term > rf.currentTerm){
                     rf.currentState = 1
                     rf.currentTerm = r.Term
@@ -445,7 +443,7 @@ func (rf *Raft) actuallySend(c int, i int){
                     rf.mux.Unlock()
                     return
                 }
-                if (r.Success){
+                if (r.Success== true){
                     //fmt.Printf("result is a SUCCESS for id %d length of entries is %d entries are %v\n", i, len(a.Entries), a.Entries)
                     rf.nextIndex[i] = rf.nextIndex[i] + len(a.Entries)
                     rf.matchIndex[i] = rf.nextIndex[i] - 1
@@ -463,8 +461,6 @@ func (rf *Raft) actuallySend(c int, i int){
                             rf.sendCommands()
                         }
                     }
-                   // fmt.Printf("sent to apply channel for leader new commit index is %d\n", rf.commitIndex)
-                    //rf.sendEntries()
                 }else{
                     rf.nextIndex[i] = rf.nextIndex[i] - 1
                     needToRetry = true
@@ -473,17 +469,12 @@ func (rf *Raft) actuallySend(c int, i int){
             }else{
                
             }
-
-            if (!needToRetry){
+            if (needToRetry == false){
                rf.mux.Unlock()
                return
             }else{
                 rf.mux.Unlock()
             }
-
-
-
-
         }else{
           rf.mux.Unlock()
         }
@@ -626,23 +617,23 @@ func (rf *Raft) resetTimeout(){
     go rf.runTimer(t, timer)
 }
 
-func (rf *Raft) sendToApply(m chan ApplyMsg){
-    for applyMsg := range m {
+func (rf *Raft) sendToApply(p chan ApplyMsg){
+    for applyMsg := range p {
         //tfmt.Printf("sent tot apply channel %d message is %v\n", rf.me, applyMsg)
-                rf.applyCh<- applyMsg
+        rf.applyCh<- applyMsg
     }
-    return 
+    return
 
 }
 func (rf *Raft) sendCommands() {
     //fmt.Printf("send entries called on %d commit index is %d last applied is %d\n", rf.me, rf.commitIndex, rf.lastApplied)
-    m := make(chan ApplyMsg)
-    go rf.sendToApply(m)
+    passThrough := make(chan ApplyMsg)
+    go rf.sendToApply(passThrough)
 
     for i := rf.lastApplied; i < rf.commitIndex + 1; i++ {
         if (i < len(rf.log)){
             command := rf.log[i].Command
-            m <- ApplyMsg{
+            passThrough <- ApplyMsg{
                 Index: i+1,
                 Command: command,
 
